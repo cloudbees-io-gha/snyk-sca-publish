@@ -5,6 +5,7 @@ inputs:
   cloudbees-url:
     description: Cloudbees API URL
     required: false
+    default: "https://api.saas-qa.beescloud.com/"
   snyk-token:
     description: 'Snyk API token for authentication'
     required: true
