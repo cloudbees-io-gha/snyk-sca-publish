@@ -114,7 +114,7 @@ runs:
           -e JOB_ID="${{ github.job }}" \
           -e STEP_ID="${{ inputs.step-id }}" \
           -e SNYK_SCA_PROPS='{"accessToken": "${{ inputs.snyk-token }}", "orgName": "${{ inputs.org-id }}", "cliParams": "${{ inputs.cli-params }}", "buildDirectory": "${{ inputs.build-directory }}"}' \
-          public.ecr.aws/l7o7z1g8/actions/assets-snyk-sca-scanner:4020795589f559f2485d450faa0c7fb252f8fde2 \
+          public.ecr.aws/l7o7z1g8/actions/assets-snyk-sca-scanner:80bea9113f19c64c9ff1d4c6a86c0519fbfebaab \
           --mode single
 
 
