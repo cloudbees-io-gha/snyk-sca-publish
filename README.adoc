@@ -1,0 +1,416 @@
+= Snyk SCA scan and publish to Platform
+
+Use this action to scan Software Composition Analysis (SCA) repositories for security vulnerabilities in open source dependencies with the Snyk SCA scanner.
+The action output can be used as a quality gate in subsequent GitHub Actions steps or jobs.
+
+Snyk Software Composition Analysis (SCA) is a developer-first security solution that scans and monitors open source dependencies for security vulnerabilities and licensing issues.
+
+Add a Snyk SCA scan to your workflows in CloudBees platform to:
+
+* Detect security vulnerabilities in open source dependencies and third-party libraries.
+* Identify licensing issues and policy violations in dependencies.
+* Gain insight into dependency risks and how to fix vulnerabilities.
+* Ensure compliance with security best practices and open source licensing standards.
+* Shift security left by catching dependency issues early in the development lifecycle.
+
+CloudBees platform enables you to run a Snyk SCA scan either implicitly or explicitly.
+
+== Explicit and implicit scan types
+
+An implicit scan is automatically triggered, and an explicit scan is one you configure to be invoked in a step of your workflow.
+To learn more about the differences between explicit and implicit scans, refer to link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/actions#security[Security scan actions].
+
+To set up implicit scanning, refer to link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/aspm/implicit-security-analysis[Code and binary security analysis].
+
+== Prerequisites
+
+Set up the CloudBees platform and GHA to work together, providing key features of the platform to GHA workflows. Refer to link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/github-actions/gha-getting-started[Getting started with GHA integration] for more information.
+
+== How the scanner works
+
+The Snyk SCA scanner architectural components are:
+
+* Snyk CLI: The command-line interface that performs the scanning.
+* Snyk Vulnerability Database: Contains information about known vulnerabilities in open source packages.
+* Snyk Dependency Graph: Maps your project's dependency tree for comprehensive analysis.
+* Snyk API: Communicates scan results to the Snyk platform for centralized management.
+
+The scanning process is as follows:
+
+. The Snyk SCA scanner identifies dependency manifest files in your repository (package.json, pom.xml, requirements.txt, etc.).
+. Dependencies are resolved and a complete dependency graph is built, including transitive dependencies.
+. Each dependency is analyzed against Snyk's vulnerability database for known security issues.
+. Security vulnerabilities are identified with severity levels, detailed descriptions, and remediation guidance.
+. The scan results are uploaded to the Snyk platform (if configured).
+. Results are made available as actionable outputs for quality gates and downstream workflow steps.
+
+NOTE: For more information about Snyk SCA, refer to the link:https://docs.snyk.io/products/snyk-open-source[Snyk Open Source documentation].
+
+== Inputs
+
+[cols="2a,1a,1a,3a",options="header"]
+.Input details
+|===
+
+| Input name
+| Data type
+| Required?
+| Description
+
+| `snyk-token`
+| String
+| Yes
+| The Snyk API token for authentication.
+
+| `org-id`
+| String
+| Yes
+| The Snyk organization ID.
+
+| `severity-threshold`
+| String
+| No
+| Report only vulnerabilities of provided level or higher (low, medium, high, critical).
+
+| `ref`
+| String
+| No
+| Specify the ref to be checked out and scanned.
+
+| `workspace-dir`
+| String
+| No
+| The file path of the code to be scanned.
+
+|===
+
+== Outputs
+
+[cols="2a,1a,4a",options="header"]
+.Output details
+|===
+
+| Output name
+| Data type
+| Description
+
+| `critical-count`
+| String
+| The number of *Critical* severity issues discovered during the scan.
+
+| `very-high-count`
+| String
+| The number of *Very High* severity issues discovered during the scan.
+
+| `high-count`
+| String
+| The number of *High* severity issues discovered during the scan.
+
+| `medium-count`
+| String
+| The number of *Medium* severity issues discovered during the scan.
+
+| `low-count`
+| String
+| The number of *Low* severity issues discovered during the scan.
+
+|===
+
+IMPORTANT: This action uses GitHub OIDC authentication to securely communicate with CloudBees platform.
+Be sure to set permissions to `id-token: write` in your workflow.
+
+== Usage examples
+
+The following is a basic example of using this action:
+
+[source,yaml]
+----
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Scan with Snyk SCA
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+
+----
+
+=== Using severity threshold
+
+In the following example, the scan will only report issues of high or critical severity:
+
+[source,yaml]
+----
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Scan with Snyk SCA with severity threshold
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+          severity-threshold: 'high'
+
+----
+
+=== Using the action output
+
+You can use the output values from this action in downstream steps and jobs.
+The following example uses the action output in a downstream step of the same job:
+
+[source, yaml,role="default-expanded"]
+----
+name: my-workflow
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  snyk-sca-scan-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v2
+
+      - id: snyk-sca-step
+        name: Snyk SCA Scan
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+
+      - name: Source dir examine
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work golang:1.20.3-alpine3.17 ls -latR /work
+
+      - id: print-outputs-from-snyk-sca-step
+        name: Print outputs from the upstream Snyk SCA Scan step
+        run: |
+          # Printing all outputs
+          echo "Outputs from upstream Snyk SCA Scan step:"
+          echo "Critical count: ${{ steps.snyk-sca-step.outputs.critical-count }}"
+          echo "Very high count: ${{ steps.snyk-sca-step.outputs.very-high-count }}"
+          echo "High count: ${{ steps.snyk-sca-step.outputs.high-count }}"
+          echo "Medium count: ${{ steps.snyk-sca-step.outputs.medium-count }}"
+          echo "Low count: ${{ steps.snyk-sca-step.outputs.low-count }}"
+----
+
+The following example uses the action output in a downstream job:
+
+[source, yaml,role="default-expanded"]
+----
+name: my-workflow
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    outputs:
+      snyk-sca-job-output-critical: ${{ steps.snyk-sca-step.outputs.critical-count }}
+      snyk-sca-job-output-very-high: ${{ steps.snyk-sca-step.outputs.very-high-count }}
+      snyk-sca-job-output-high: ${{ steps.snyk-sca-step.outputs.high-count }}
+      snyk-sca-job-output-medium: ${{ steps.snyk-sca-step.outputs.medium-count }}
+      snyk-sca-job-output-low: ${{ steps.snyk-sca-step.outputs.low-count }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v2
+
+      - id: snyk-sca-step
+        name: Snyk SCA scan
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+          severity-threshold: 'high'
+
+      - name: Source dir examine
+        run: |
+          ls -latR ${GITHUB_WORKSPACE}
+
+  job2:
+    runs-on: ubuntu-latest
+    needs: job1
+    steps:
+      - id: print-outputs-from-job1
+        name: Print outputs from upstream job1
+        run: |
+          # Printing all outputs
+          echo "Outputs from upstream Snyk SCA Scan job:"
+          echo "Critical count: ${{ needs.job1.outputs.snyk-sca-job-output-critical }}"
+          echo "Very high count: ${{ needs.job1.outputs.snyk-sca-job-output-very-high }}"
+          echo "High count: ${{ needs.job1.outputs.snyk-sca-job-output-high }}"
+          echo "Medium count: ${{ needs.job1.outputs.snyk-sca-job-output-medium }}"
+          echo "Low count: ${{ needs.job1.outputs.snyk-sca-job-output-low }}"
+----
+
+=== Full workflow and run example
+
+The following GHA workflow example scans a Node.js repository with Snyk SCA scanner.
+
+.Example GHA workflow YAML file
+[.collapsible]
+--
+
+[source, yaml,role="default-expanded"]
+----
+name: Snyk SCA scan
+
+on:
+  push:
+    branches:
+     - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  snyk-sca-scan:
+    runs-on:
+     ubuntu-latest
+    outputs:
+      snyk-sca-job-output-critical: ${{ steps.snyk-sca-step.outputs.critical-count }}
+      snyk-sca-job-output-very-high: ${{ steps.snyk-sca-step.outputs.very-high-count }}
+      snyk-sca-job-output-high: ${{ steps.snyk-sca-step.outputs.high-count }}
+      snyk-sca-job-output-medium: ${{ steps.snyk-sca-step.outputs.medium-count }}
+      snyk-sca-job-output-low: ${{ steps.snyk-sca-step.outputs.low-count }}
+    steps:
+
+      # Checkout code
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      # Print run info
+      - name: Print run info
+        shell: bash
+        run: |
+          echo "Ref name is $GITHUB_RUN_ID"
+          echo "Source is ${{ github.server_url }}/${{ github.repository }}"
+          echo "Subject is $GITHUB_WORKFLOW_REF|${{ github.run_id }}|${{ github.run_attempt }}|${{ github.run_number }}"
+          echo "Job is $GITHUB_JOB"
+
+      # Run Snyk SCA scan
+      - name: Snyk SCA scan
+        id: snyk-sca-step
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+          severity-threshold: 'medium'
+
+      - name: Source dir examine
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work golang:1.20.3-alpine3.17 ls -latR /work
+
+      - id: print-outputs-from-snyk-sca-step
+        name: Print outputs from the upstream Snyk SCA Scan step
+        run: |
+          # Printing all outputs
+          echo "Outputs from upstream Snyk SCA Scan step:"
+          echo "Critical count: ${{ steps.snyk-sca-step.outputs.critical-count }}"
+          echo "Very high count: ${{ steps.snyk-sca-step.outputs.very-high-count }}"
+          echo "High count: ${{ steps.snyk-sca-step.outputs.high-count }}"
+          echo "Medium count: ${{ steps.snyk-sca-step.outputs.medium-count }}"
+          echo "Low count: ${{ steps.snyk-sca-step.outputs.low-count }}"
+
+----
+--
+
+After the GHA run has completed, the security findings are collected and displayed in the link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/aspm/security-center[Security center] of the component containing the workflow.
+
+=== Scan Python dependencies with Snyk SCA
+
+The following GHA workflow example scans Python dependencies with Snyk SCA.
+
+[source, yaml,role="default-expanded"]
+----
+name: Snyk SCA scan
+
+on:
+  push:
+    branches:
+     - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  snyk-sca-python-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Python project source code
+        uses: actions/checkout@v4
+
+      - name: Snyk SCA scan on Python dependencies
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+          severity-threshold: 'medium'
+
+----
+
+=== Scan Java/Maven dependencies with Snyk SCA
+
+The following GHA workflow example scans Java/Maven dependencies with Snyk SCA.
+
+[source, yaml,role="default-expanded"]
+----
+name: Snyk SCA scan
+
+on:
+  push:
+    branches:
+     - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  snyk-sca-maven-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Maven project
+        uses: actions/checkout@v4
+
+      - name: Snyk SCA scan on Maven dependencies
+        uses: cloudbees-io-gha/snyk-sca-publish@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          org-id: ${{ vars.SNYK_ORG_ID }}
+
+----
+
+== License
+
+This code is made available under the
+link:https://opensource.org/license/mit/[MIT license].
+
+== References
+
+* Learn more about link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/github-actions/intro[Using GitHub Actions with CloudBees platform].
+* Learn about link:https://docs.cloudbees.com/docs/cloudbees-platform/latest/[CloudBees platform].
+* Learn about link:https://docs.snyk.io/products/snyk-open-source[Snyk Open Source (SCA)].
+
+
+
+
